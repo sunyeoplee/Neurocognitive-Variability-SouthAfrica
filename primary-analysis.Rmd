@@ -1,0 +1,590 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, error=T)
+```
+
+```{r}
+library(ggplot2)
+library(tableone)
+library(R2MLwiN);options(MLwiN_path = "C:/Program Files/MLwiN v3.04/mlwin.exe")
+library(lmtest)
+library(psych)
+```
+
+
+```{r eval=F}
+# table one
+{
+tableone_all_vars <- c('Age','Education_2','Income_2','Maritalstatus_3','Employed','HIV_Status','CESD_total','DTS_Total',
+                       'Education','Ethnicity','Homelang','Breadwinner','Children','Age_3')
+tableone_cat_vars <- c('Education_2','Income_2','Maritalstatus_3','Employed','HIV_Status',
+                       'Education','Ethnicity','Homelang','Breadwinner','Age_3')
+table1 <- CreateTableOne(data=all_data, vars=tableone_all_vars, factorVars=tableone_cat_vars, includeNA=T)
+write.csv(print(table1, catDigits=1,contDigits=2,missing=T,test=F,showAllLevels=T,noSpaces=T), file='table1.csv')
+
+# CTQ_Total means
+CTQ_mean <- all_data %>%
+  group_by(Education_2) %>%
+  summarize(mean = mean(CTQ_Total, na.rm = T),
+            sd = sd(CTQ_Total, na.rm = T))
+CTQ_mean
+summary(aov(CTQ_Total ~ Education_2, data=all_data))
+
+CTQ_mean <- all_data %>%
+  group_by(Income_2) %>%
+  summarize(mean = mean(CTQ_Total, na.rm = T),
+            sd = sd(CTQ_Total, na.rm = T))
+CTQ_mean
+summary(aov(CTQ_Total ~ Income_2, data=all_data))
+
+
+CTQ_mean <- all_data %>%
+  group_by(Maritalstatus_3) %>%
+  summarize(mean = mean(CTQ_Total, na.rm = T),
+            sd = sd(CTQ_Total, na.rm = T))
+CTQ_mean
+summary(aov(CTQ_Total ~ Maritalstatus_3, data=all_data))
+
+CTQ_mean <- all_data %>%
+  group_by(Employed) %>%
+  summarize(mean = mean(CTQ_Total, na.rm = T),
+            sd = sd(CTQ_Total, na.rm = T))
+CTQ_mean
+summary(aov(CTQ_Total ~ Employed, data=all_data))
+
+CTQ_mean <- all_data %>%
+  group_by(HIV_Status) %>%
+  summarize(mean = mean(CTQ_Total, na.rm = T),
+            sd = sd(CTQ_Total, na.rm = T))
+CTQ_mean
+summary(aov(CTQ_Total ~ HIV_Status, data=all_data))
+
+# Cronbach's alpha
+alpha_data <- cov_data[, grep("^CTQ", names(cov_data), value=T)]
+alpha_data <- alpha_data[1:28]
+
+psych::alpha(alpha_data)
+
+
+}
+```
+
+
+
+# OLS residual catch all plot
+```{r eval=T}
+
+outcomes <- colnames(nc_data[3:23])
+
+lapply(outcomes, function(x) {
+  formula <- substitute(outcome ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + Maritalstatus_3 + Income_2 + Employed +
+                          CESD_total_c + DTS_Total_c,
+                      list(outcome=as.name(x)))
+  model <- lm(formula = formula, data = all_data)
+  model_sum <- summary(model)
+  fit <- model$fitted.values
+  resid <- model$residuals
+  residplot1 <- ggplot(data=NULL, aes(fit, resid)) +
+    geom_point()
+  residplot2 <- ggplot(data=NULL, aes(all_data$CTQ_Total_c, resid)) +
+    geom_point()
+  list(x, model_sum, residplot1, residplot2)
+              
+})
+
+
+
+
+
+
+```
+
+
+
+# CTQ_Total (continuous) - graphs with likelihood ratio tests - variance as a linear function
+```{r eval=T }
+#complex level-1 by CTQ_Total (continuous) - variance as a linear function
+{
+outcomes <- c("Colortrails_2")
+
+sample <- all_data
+covmatrix <-  matrix(, nrow = 3, ncol = 1)
+covmatrix[1, 1] <-  1
+covmatrix[2, 1] <-  "CTQ_Total_c"
+covmatrix[3, 1] <-  "CTQ_Total_c"
+options <- list(debugmode = FALSE, Meth = 0, clre = covmatrix)
+
+model_result <- lapply(outcomes, function(x) {
+                  model_1 <- substitute(outcome ~ 1 + CTQ_Total_c + Age_c + HIV_Status + 
+                              Education_2 + CESD_total_c + DTS_Total_c +
+                              Maritalstatus_3 + Income_2 + Employed +
+                              (1| id), list(outcome = as.name(x)))
+                  model_2 <- substitute(outcome ~ 1 + CTQ_Total_c + Age_c + HIV_Status + 
+                              Education_2 + CESD_total_c + DTS_Total_c +
+                              Maritalstatus_3 + Income_2 + Employed +
+                              (1 + CTQ_Total_c| id), list(outcome = as.name(x)))
+                  result_1 <- summary(runMLwiN(Formula = model_1, estoptions = options,
+                                               data = sample))
+                  result_2 <- summary(runMLwiN(Formula = model_2, estoptions = options,
+                                               data = sample))
+                  ci <- confint(result_2)
+                  ci_random <- ci[grep("^RP", rownames(ci)),]
+                  
+                  G2 <- 2 * (logLik(result_2) -  logLik(result_1))
+                  likelihood_ratio_test <- pchisq(as.numeric(G2), df=1, lower.tail=F)
+                  
+                  all_data$lev1variance <- result_2["RP"][["RP1_var_Intercept"]] +
+                      2*result_2["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]]  
+                  
+                  lrtest_location <- 
+                    (max(all_data$lev1variance)-min(all_data$lev1variance))/2 +
+                    min(all_data$lev1variance)
+                  
+                  visual <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title=list(outcome=as.name(x)),
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold")) +
+                    geom_text(x=50, y=lrtest_location, label=likelihood_ratio_test, size=4)
+                  list(result_1, result_2, G2, likelihood_ratio_test, ci_random, visual)
+})
+model_result
+}
+```
+
+# CTQ_Total (continuous) - graphs with likelihood ratio tests - variance as a quadratic function
+```{r eval=T}
+#complex level-1 by CTQ_Total (continuous) - variance as a quadratic function
+{
+outcomes <- c("HVLT_total_learning","HVLT_delayed_recall","BVMT_total_learning", # remove Peg_dominant, Peg_nondominant, Colortrails_2
+              "BVMT_delayed_recall","Digit_symbol_total","Symbol_search_total",
+            "TrailsA_time","Colortrails_1","Spatial_span_total","FAS_correct",
+              "Animals_correct","Actions_correct","Stroop_1_word","Stroop_2_color",
+              "Stroop_3_color_word","Pasat._correct","WCST_perseverative_responses",
+              "Category_totalerrors")
+
+sample <- all_data
+
+options <- list(debugmode = F, Meth = 0)
+
+model_result <- lapply(outcomes, function(x) {
+                  model_1 <- substitute(outcome ~ 1 + CTQ_Total_c + Age_c + HIV_Status + 
+                              Education_2 + CESD_total_c + DTS_Total_c +
+                              Maritalstatus_3 + Income_2 + Employed +
+                              (1| id), list(outcome = as.name(x)))
+                  model_2 <- substitute(outcome ~ 1 + CTQ_Total_c + Age_c + HIV_Status + 
+                              Education_2 + CESD_total_c + DTS_Total_c +
+                              Maritalstatus_3 + Income_2 + Employed +
+                              (1 + CTQ_Total_c| id), list(outcome = as.name(x)))
+                  result_1 <- summary(runMLwiN(Formula = model_1, estoptions = options,
+                                               data = sample))
+                  result_2 <- summary(runMLwiN(Formula = model_2, estoptions = options,
+                                               data = sample))
+                  ci <- confint(result_2)
+                  ci_random <- ci[grep("^RP", rownames(ci)),]
+                  
+                  G2 <- 2 * (logLik(result_2) -  logLik(result_1))
+                  likelihood_ratio_test <- pchisq(as.numeric(G2), df=2, lower.tail=F)
+                  
+                  all_data$lev1variance <- result_2["RP"][["RP1_var_Intercept"]] +
+                      2*result_2["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]] +
+                    result_2["RP"][["RP1_var_CTQ_Total_c"]]*all_data[["CTQ_Total_c"]]^2 
+                  
+                  lrtest_location <- 
+                    (max(all_data$lev1variance)-min(all_data$lev1variance))/2 +
+                    min(all_data$lev1variance)
+                  
+                  visual <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title=list(outcome=as.name(x)),
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold")) +
+                    geom_text(x=50, y=lrtest_location, label=likelihood_ratio_test, size=4)
+                  list(result_1, result_2, G2, likelihood_ratio_test, ci_random, visual)
+})
+model_result
+}
+```
+
+```{r}
+# BVMT_total_learning
+{
+model <- lm(BVMT_total_learning ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + Maritalstatus_3 + Income_2 + Employed +
+                          CESD_total_c + DTS_Total_c, data=all_data)
+result <- summary(model)
+
+fit <- model$fitted.values
+resid <- model$residuals
+
+residplot1 <- ggplot(data = NULL, aes(fit, resid)) +
+  geom_point()
+print(residplot1)
+
+residplot2 <-
+  ggplot(data = NULL, aes(all_data$CTQ_Total_c, resid)) +
+  geom_point()
+print(residplot2)
+
+
+sample <- all_data
+options <- list(debugmode = F, Meth = 0)
+model <- BVMT_total_learning ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + CESD_total_c + DTS_Total_c +
+  Maritalstatus_3 + Income_2 + Employed + (1 + CTQ_Total_c| id)
+result <- summary(runMLwiN(Formula = model, estoptions = options, data = sample))
+
+all_data$lev1variance <- result["RP"][["RP1_var_Intercept"]] +
+                      2*result["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]] +
+                    result["RP"][["RP1_var_CTQ_Total_c"]]*all_data[["CTQ_Total_c"]]^2 
+
+
+print(paste('minimum residual variance is', round(min(all_data$lev1variance),3)))
+print(paste('maximum residual variance is', round(max(all_data$lev1variance),3)))
+
+visual1 <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title='BVMT_total_learning',
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold"))
+print(visual1)
+
+all_data$regline <- result@FP[["FP_Intercept"]]+result@FP[["FP_CTQ_Total_c"]]*all_data$CTQ_Total
+all_data$regline_upperCI <- all_data$regline + 1.96*sqrt(all_data$lev1variance)
+all_data$regline_lowerCI <- all_data$regline - 1.96*sqrt(all_data$lev1variance)
+
+visual2 <- ggplot(data = all_data, aes(x = CTQ_Total)) +
+  geom_line(aes(y=regline)) +
+  geom_line(aes(y=regline_upperCI), linetype='longdash') +
+  geom_line(aes(y=regline_lowerCI), linetype='longdash') +
+  labs(title="BVMT_total_learning", x="CTQ_Total", y = "Outcome") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+        axis.text=element_text(size=10, face="bold"),
+        axis.title=element_text(size=10,face="bold"))
+print(visual2)
+
+}
+```
+
+```{r}
+# TrailsA_time
+{
+model <- lm(TrailsA_time ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + Maritalstatus_3 + Income_2 + Employed +
+                          CESD_total_c + DTS_Total_c, data=all_data)
+result <- summary(model)
+
+fit <- model$fitted.values
+resid <- model$residuals
+
+residplot1 <- ggplot(data = NULL, aes(fit, resid)) +
+  geom_point()
+print(residplot1)
+
+residplot2 <-
+  ggplot(data = NULL, aes(all_data$CTQ_Total_c, resid)) +
+  geom_point()
+print(residplot2)
+
+
+sample <- all_data
+options <- list(debugmode = F, Meth = 0)
+model <- TrailsA_time ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + CESD_total_c + DTS_Total_c +
+  Maritalstatus_3 + Income_2 + Employed + (1 + CTQ_Total_c| id)
+result <- summary(runMLwiN(Formula = model, estoptions = options, data = sample))
+
+all_data$lev1variance <- result["RP"][["RP1_var_Intercept"]] +
+                      2*result["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]] +
+                    result["RP"][["RP1_var_CTQ_Total_c"]]*all_data[["CTQ_Total_c"]]^2 
+
+print(paste('minimum residual variance is', round(min(all_data$lev1variance),3)))
+print(paste('maximum residual variance is', round(max(all_data$lev1variance),3)))
+
+visual1 <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title='TrailsA_time',
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold"))
+print(visual1)
+
+all_data$regline <- result@FP[["FP_Intercept"]]+result@FP[["FP_CTQ_Total_c"]]*all_data$CTQ_Total
+all_data$regline_upperCI <- all_data$regline + 1.96*sqrt(all_data$lev1variance)
+all_data$regline_lowerCI <- all_data$regline - 1.96*sqrt(all_data$lev1variance)
+
+visual2 <- ggplot(data = all_data, aes(x = CTQ_Total)) +
+  geom_line(aes(y=regline)) +
+  geom_line(aes(y=regline_upperCI), linetype='longdash') +
+  geom_line(aes(y=regline_lowerCI), linetype='longdash') +
+  labs(title="TrailsA_time", x="CTQ_Total", y = "Outcome") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+        axis.text=element_text(size=10, face="bold"),
+        axis.title=element_text(size=10,face="bold"))
+print(visual2)
+
+}
+```
+
+```{r}
+# Colortrails_1
+{
+model <- lm(Colortrails_1 ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + Maritalstatus_3 + Income_2 + Employed +
+                          CESD_total_c + DTS_Total_c, data=all_data)
+result <- summary(model)
+
+fit <- model$fitted.values
+resid <- model$residuals
+
+residplot1 <- ggplot(data = NULL, aes(fit, resid)) +
+  geom_point()
+print(residplot1)
+
+residplot2 <-
+  ggplot(data = NULL, aes(all_data$CTQ_Total_c, resid)) +
+  geom_point()
+print(residplot2)
+
+
+sample <- all_data
+options <- list(debugmode = F, Meth = 0)
+model <- Colortrails_1 ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + CESD_total_c + DTS_Total_c +
+  Maritalstatus_3 + Income_2 + Employed + (1 + CTQ_Total_c| id)
+result <- summary(runMLwiN(Formula = model, estoptions = options, data = sample))
+
+all_data$lev1variance <- result["RP"][["RP1_var_Intercept"]] +
+                      2*result["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]] +
+                    result["RP"][["RP1_var_CTQ_Total_c"]]*all_data[["CTQ_Total_c"]]^2 
+
+print(paste('minimum residual variance is', round(min(all_data$lev1variance),3)))
+print(paste('maximum residual variance is', round(max(all_data$lev1variance),3)))
+
+visual1 <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title='Colortrails_1',
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold"))
+print(visual1)
+
+all_data$regline <- result@FP[["FP_Intercept"]]+result@FP[["FP_CTQ_Total_c"]]*all_data$CTQ_Total
+all_data$regline_upperCI <- all_data$regline + 1.96*sqrt(all_data$lev1variance)
+all_data$regline_lowerCI <- all_data$regline - 1.96*sqrt(all_data$lev1variance)
+
+visual2 <- ggplot(data = all_data, aes(x = CTQ_Total)) +
+  geom_line(aes(y=regline)) +
+  geom_line(aes(y=regline_upperCI), linetype='longdash') +
+  geom_line(aes(y=regline_lowerCI), linetype='longdash') +
+  labs(title="Colortrails_1", x="CTQ_Total", y = "Outcome") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+        axis.text=element_text(size=10, face="bold"),
+        axis.title=element_text(size=10,face="bold"))
+print(visual2)
+
+}
+```
+
+```{r}
+# Colortrails_2
+{
+model <- lm(Colortrails_2 ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + Maritalstatus_3 + Income_2 + Employed +
+                          CESD_total_c + DTS_Total_c, data=all_data)
+result <- summary(model)
+
+fit <- model$fitted.values
+resid <- model$residuals
+
+residplot1 <- ggplot(data = NULL, aes(fit, resid)) +
+  geom_point()
+print(residplot1)
+
+residplot2 <-
+  ggplot(data = NULL, aes(all_data$CTQ_Total_c, resid)) +
+  geom_point()
+print(residplot2)
+
+
+sample <- all_data
+covmatrix <-  matrix(, nrow = 3, ncol = 1)
+covmatrix[1, 1] <-  1
+covmatrix[2, 1] <-  "CTQ_Total_c"
+covmatrix[3, 1] <-  "CTQ_Total_c"
+options <- list(debugmode = FALSE, Meth = 0, clre = covmatrix)
+model <- Colortrails_2 ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + CESD_total_c + DTS_Total_c +
+  Maritalstatus_3 + Income_2 + Employed + (1 + CTQ_Total_c| id)
+result <- summary(runMLwiN(Formula = model, estoptions = options, data = sample))
+
+all_data$lev1variance <- result["RP"][["RP1_var_Intercept"]] +
+                      2*result["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]]
+
+print(paste('minimum residual variance is', round(min(all_data$lev1variance),3)))
+print(paste('maximum residual variance is', round(max(all_data$lev1variance),3)))
+
+visual1 <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title='Colortrails_2',
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold"))
+print(visual1)
+
+all_data$regline <- result@FP[["FP_Intercept"]]+result@FP[["FP_CTQ_Total_c"]]*all_data$CTQ_Total
+all_data$regline_upperCI <- all_data$regline + 1.96*sqrt(all_data$lev1variance)
+all_data$regline_lowerCI <- all_data$regline - 1.96*sqrt(all_data$lev1variance)
+
+visual2 <- ggplot(data = all_data, aes(x = CTQ_Total)) +
+  geom_line(aes(y=regline)) +
+  geom_line(aes(y=regline_upperCI), linetype='longdash') +
+  geom_line(aes(y=regline_lowerCI), linetype='longdash') +
+  labs(title="Colortrails_2", x="CTQ_Total", y = "Outcome") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+        axis.text=element_text(size=10, face="bold"),
+        axis.title=element_text(size=10,face="bold"))
+print(visual2)
+
+}
+```
+
+```{r}
+# Stroop_3_color_word
+{
+model <- lm(Stroop_3_color_word ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + Maritalstatus_3 + Income_2 + Employed +
+                          CESD_total_c + DTS_Total_c, data=all_data)
+result <- summary(model)
+
+fit <- model$fitted.values
+resid <- model$residuals
+
+residplot1 <- ggplot(data = NULL, aes(fit, resid)) +
+  geom_point()
+print(residplot1)
+
+residplot2 <-
+  ggplot(data = NULL, aes(all_data$CTQ_Total_c, resid)) +
+  geom_point()
+print(residplot2)
+
+
+sample <- all_data
+options <- list(debugmode = F, Meth = 0)
+model <- Stroop_3_color_word ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + CESD_total_c + DTS_Total_c +
+  Maritalstatus_3 + Income_2 + Employed + (1 + CTQ_Total_c| id)
+result <- summary(runMLwiN(Formula = model, estoptions = options, data = sample))
+
+all_data$lev1variance <- result["RP"][["RP1_var_Intercept"]] +
+                      2*result["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]] +
+                    result["RP"][["RP1_var_CTQ_Total_c"]]*all_data[["CTQ_Total_c"]]^2 
+
+print(paste('minimum residual variance is', round(min(all_data$lev1variance),3)))
+print(paste('maximum residual variance is', round(max(all_data$lev1variance),3)))
+
+visual1 <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title='Stroop_3_color_word',
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold"))
+print(visual1)
+
+all_data$regline <- result@FP[["FP_Intercept"]]+result@FP[["FP_CTQ_Total_c"]]*all_data$CTQ_Total
+all_data$regline_upperCI <- all_data$regline + 1.96*sqrt(all_data$lev1variance)
+all_data$regline_lowerCI <- all_data$regline - 1.96*sqrt(all_data$lev1variance)
+
+visual2 <- ggplot(data = all_data, aes(x = CTQ_Total)) +
+  geom_line(aes(y=regline)) +
+  geom_line(aes(y=regline_upperCI), linetype='longdash') +
+  geom_line(aes(y=regline_lowerCI), linetype='longdash') +
+  labs(title="Stroop_3_color_word", x="CTQ_Total", y = "Outcome") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+        axis.text=element_text(size=10, face="bold"),
+        axis.title=element_text(size=10,face="bold"))
+print(visual2)
+
+}
+```
+
+```{r}
+# Spatial_span_total
+{
+model <- lm(Spatial_span_total ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + Maritalstatus_3 + Income_2 + Employed +
+                          CESD_total_c + DTS_Total_c, data=all_data)
+result <- summary(model)
+
+fit <- model$fitted.values
+resid <- model$residuals
+
+residplot1 <- ggplot(data = NULL, aes(fit, resid)) +
+  geom_point()
+print(residplot1)
+
+residplot2 <-
+  ggplot(data = NULL, aes(all_data$CTQ_Total_c, resid)) +
+  geom_point()
+print(residplot2)
+
+
+sample <- all_data
+options <- list(debugmode = F, Meth = 0)
+model <- Spatial_span_total ~ 1 + CTQ_Total_c + Age_c + HIV_Status + Education_2 + CESD_total_c + DTS_Total_c +
+  Maritalstatus_3 + Income_2 + Employed + (1 + CTQ_Total_c| id)
+result <- summary(runMLwiN(Formula = model, estoptions = options, data = sample))
+
+all_data$lev1variance <- result["RP"][["RP1_var_Intercept"]] +
+                      2*result["RP"][["RP1_cov_Intercept_CTQ_Total_c"]]*
+                      all_data[["CTQ_Total_c"]] +
+                    result["RP"][["RP1_var_CTQ_Total_c"]]*all_data[["CTQ_Total_c"]]^2 
+
+print(paste('minimum residual variance is', round(min(all_data$lev1variance),3)))
+print(paste('maximum residual variance is', round(max(all_data$lev1variance),3)))
+
+visual1 <- ggplot(data = all_data, aes(CTQ_Total, lev1variance)) +
+                    geom_line(linetype = "solid", size = 1) +
+                    labs(title='Spatial_span_total',
+                         x="CTQ_Total",
+                         y = "Variance") +
+                    theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+                          axis.text=element_text(size=10, face="bold"),
+                          axis.title=element_text(size=10,face="bold"))
+print(visual1)
+
+all_data$regline <- result@FP[["FP_Intercept"]]+result@FP[["FP_CTQ_Total_c"]]*all_data$CTQ_Total
+all_data$regline_upperCI <- all_data$regline + 1.96*sqrt(all_data$lev1variance)
+all_data$regline_lowerCI <- all_data$regline - 1.96*sqrt(all_data$lev1variance)
+
+visual2 <- ggplot(data = all_data, aes(x = CTQ_Total)) +
+  geom_line(aes(y=regline)) +
+  geom_line(aes(y=regline_upperCI), linetype='longdash') +
+  geom_line(aes(y=regline_lowerCI), linetype='longdash') +
+  labs(title="Spatial_span_total", x="CTQ_Total", y = "Outcome") +
+  theme(plot.title = element_text(size = 10, hjust = 0.5, face = "bold"),
+        axis.text=element_text(size=10, face="bold"),
+        axis.title=element_text(size=10,face="bold"))
+print(visual2)
+
+}
+```
+
