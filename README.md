@@ -3,7 +3,7 @@
 We examined the differential variability of various neurocognitive outcomes by childhood trauma in South African women. To model the variance, we ran complex level-1 variance model. This model is a multilevel model in which level-1 variance is modelled by level-1 variable. Here, neurocognitive outcomes are modelled by a continuous meausre of childhood trauma severity. All codes were run in R. For the complex level-1 variance models, R2MLwiN package was used in R to run MLwiN within R. 
 
 ### Installation: 
-[R](https://cran.r-project.org/bin/windows/base/) - a programming language
+[R](https://cran.r-project.org/bin/windows/base/) - a programming language  
 [MLwiN](http://www.bristol.ac.uk/cmm/software/mlwin/download/) - a specialized software for multilevel modeling
 
 ### Analytic framework:
