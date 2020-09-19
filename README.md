@@ -1,4 +1,4 @@
-# Neurocognitive-Variability-SouthAfrica
+# SouthAfrica-Neurocognitive-Variability
 
 We examined the differential variability of various neurocognitive outcomes by childhood trauma in South African women. To model the variance, we ran complex level-1 variance model. This model is a multilevel model in which level-1 variance is modelled by level-1 variable. Here, neurocognitive outcomes are modelled by a continuous meausre of childhood trauma severity. All codes were run in R. For the complex level-1 variance models, R2MLwiN package was used in R to run MLwiN within R. 
 
